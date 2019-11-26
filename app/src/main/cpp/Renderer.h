@@ -74,6 +74,10 @@ private:
     GLuint mFrameBuffer;
     GLuint mTexture;
 
+    GLuint mVao;
+    GLuint mVertexBuffer;
+    GLuint mIndexBuffer;
+
 };
 
 #endif // RENDERER_H

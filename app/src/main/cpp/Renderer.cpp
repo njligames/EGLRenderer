@@ -19,6 +19,7 @@
 #include <pthread.h>
 #include <android/native_window.h> // requires ndk r5 or newer
 #include <EGL/egl.h> // requires ndk r5 or newer
+#define GL_GLEXT_PROTOTYPES
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <GLES2/gl2platform.h>
@@ -26,39 +27,207 @@
 #include <strings.h>
 #include <android/log.h>
 #include <string>
+#include <vector>
 
 #define LOG_INFO(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOG_ERROR(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 #include "Renderer.h"
+#include "glm/glm.hpp"
 
 #define LOG_TAG "EglSample"
 
+static void glErrorCheck()
+{
+    do                                                                           \
+    {                                                                          \
+      for (int error = glGetError(); error; error = glGetError())              \
+        {
+
+          switch (error)                                                       \
+            {                                                                  \
+            case GL_NO_ERROR:                                                  \
+              LOG_INFO(                            \
+                             "GL_NO_ERROR - No error has been recorded. The "  \
+                             "value of this symbolic constant is guaranteed "  \
+                             "to be 0.");                                      \
+              break;                                                           \
+            case GL_INVALID_ENUM:                                              \
+              LOG_ERROR(                              \
+                           "GL_INVALID_ENUM - An unacceptable value is "       \
+                           "specified for an enumerated argument. The "        \
+                           "offending command is ignored and has no other "    \
+                           "side effect than to set the error flag.");         \
+              break;                                                           \
+            case GL_INVALID_VALUE:                                             \
+              LOG_ERROR(                              \
+                           "GL_INVALID_VALUE - A numeric argument is out of "  \
+                           "range. The offending command is ignored and has "  \
+                           "no other side effect than to set the error "       \
+                           "flag.");                                           \
+              break;                                                           \
+            case GL_INVALID_OPERATION:                                         \
+              LOG_ERROR(                              \
+                           "GL_INVALID_OPERATION - The specified operation "   \
+                           "is not allowed in the current state. The "         \
+                           "offending command is ignored and has no other "    \
+                           "side effect than to set the error flag.");         \
+              break;                                                           \
+            case GL_INVALID_FRAMEBUFFER_OPERATION:                             \
+              LOG_ERROR(                              \
+                           "GL_INVALID_FRAMEBUFFER_OPERATION - The command "   \
+                           "is trying to render to or read from the "          \
+                           "framebuffer while the currently bound "            \
+                           "framebuffer is not framebuffer complete (i.e. "    \
+                           "the return value from glCheckFramebufferStatus "   \
+                           "is not GL_FRAMEBUFFER_COMPLETE). The offending "   \
+                           "command is ignored and has no other side effect "  \
+                           "than to set the error flag.");                     \
+              break;                                                           \
+            case GL_OUT_OF_MEMORY:                                             \
+              LOG_ERROR(                              \
+                           "GL_OUT_OF_MEMORY - There is not enough memory "    \
+                           "left to execute the command. The state of the GL " \
+                           "is undefined, except for the state of the error "  \
+                           "flags, after this error is recorded.");            \
+              break;                                                           \
+            default:                                                           \
+              LOG_ERROR( "Unknown (%x)", error);      \
+            }                                                                  \
+        }                                                                      \
+    }                                                                          \
+  while (0);
+}
+
+
+//#if LOGGING_ON
+#define DEBUG_GL_ERROR_PRINT(op, fmt, ...)                                     \
+  do                                                                           \
+    {                                                                          \
+      for (int error = glGetError(); error; error = glGetError())              \
+        {                                                                      \
+          LOG_ERROR( "after %s(" fmt ")", #op,        \
+                       __VA_ARGS__);                                           \
+          switch (error)                                                       \
+            {                                                                  \
+            case GL_NO_ERROR:                                                  \
+              LOG_INFO(                            \
+                             "GL_NO_ERROR - No error has been recorded. The "  \
+                             "value of this symbolic constant is guaranteed "  \
+                             "to be 0.");                                      \
+              break;                                                           \
+            case GL_INVALID_ENUM:                                              \
+              LOG_ERROR(                              \
+                           "GL_INVALID_ENUM - An unacceptable value is "       \
+                           "specified for an enumerated argument. The "        \
+                           "offending command is ignored and has no other "    \
+                           "side effect than to set the error flag.");         \
+              break;                                                           \
+            case GL_INVALID_VALUE:                                             \
+              LOG_ERROR(                              \
+                           "GL_INVALID_VALUE - A numeric argument is out of "  \
+                           "range. The offending command is ignored and has "  \
+                           "no other side effect than to set the error "       \
+                           "flag.");                                           \
+              break;                                                           \
+            case GL_INVALID_OPERATION:                                         \
+              LOG_ERROR(                              \
+                           "GL_INVALID_OPERATION - The specified operation "   \
+                           "is not allowed in the current state. The "         \
+                           "offending command is ignored and has no other "    \
+                           "side effect than to set the error flag.");         \
+              break;                                                           \
+            case GL_INVALID_FRAMEBUFFER_OPERATION:                             \
+              LOG_ERROR(                              \
+                           "GL_INVALID_FRAMEBUFFER_OPERATION - The command "   \
+                           "is trying to render to or read from the "          \
+                           "framebuffer while the currently bound "            \
+                           "framebuffer is not framebuffer complete (i.e. "    \
+                           "the return value from glCheckFramebufferStatus "   \
+                           "is not GL_FRAMEBUFFER_COMPLETE). The offending "   \
+                           "command is ignored and has no other side effect "  \
+                           "than to set the error flag.");                     \
+              break;                                                           \
+            case GL_OUT_OF_MEMORY:                                             \
+              LOG_ERROR(                              \
+                           "GL_OUT_OF_MEMORY - There is not enough memory "    \
+                           "left to execute the command. The state of the GL " \
+                           "is undefined, except for the state of the error "  \
+                           "flags, after this error is recorded.");            \
+              break;                                                           \
+            default:                                                           \
+              LOG_ERROR( "Unknown (%x)", error);      \
+            }                                                                  \
+        }                                                                      \
+    }                                                                          \
+  while (0)
+//#else
+//#define DEBUG_GL_ERROR_PRINT(op, fmt, ...)                                     \
+//  {                                                                            \
+//  }
+//#endif
+
+#if !(defined(NDEBUG))
+#define DEBUG_GL_ERROR_WRITE(op) DEBUG_GL_ERROR_PRINT(op, "%s", "")
+#else
+#define DEBUG_GL_ERROR_WRITE(op)                                               \
+  {                                                                            \
+  }
+#endif
+
+
+
+//const std::string fragmentSource = R"(
+//
+//varying highp vec2 textureCoordinate;
+//
+//uniform sampler2D videoFrame;
+//
+//void main()
+//{
+//	gl_FragColor = texture2D(videoFrame, textureCoordinate);
+//}
+//
+//)";
+//
+//const std::string vertexSource = R"(
+//
+//attribute vec4 position;
+//attribute vec4 inputTextureCoordinate;
+//
+//varying vec2 textureCoordinate;
+//
+//void main()
+//{
+//	gl_Position = position;
+//	textureCoordinate = inputTextureCoordinate.xy;
+//}
+//
+//)";
+
+
 const std::string fragmentSource = R"(
 
-varying highp vec2 textureCoordinate;
+varying lowp vec4 frag_Color;
 
-uniform sampler2D videoFrame;
-
-void main()
-{
-	gl_FragColor = texture2D(videoFrame, textureCoordinate);
+void main(void) {
+    gl_FragColor = frag_Color;
 }
 
 )";
 
 const std::string vertexSource = R"(
 
-attribute vec4 position;
-attribute vec4 inputTextureCoordinate;
+attribute vec4 a_Position;
+attribute vec4 a_Color;
 
-varying vec2 textureCoordinate;
+varying lowp vec4 frag_Color;
 
-void main()
-{
-	gl_Position = position;
-	textureCoordinate = inputTextureCoordinate.xy;
+void main(void) {
+    frag_Color = a_Color;
+    gl_Position = a_Position;
 }
+
 
 )";
 
@@ -67,14 +236,15 @@ enum {
     UNIFORM_VIDEOFRAME,
 //    UNIFORM_INPUTCOLOR,
 //    UNIFORM_THRESHOLD,
-    NUM_UNIFORMS
+            NUM_UNIFORMS
 };
 GLint uniforms[NUM_UNIFORMS];
 
 enum {
     ATTRIB_VERTEX,
-    ATTRIB_TEXTUREPOSITON,
-    NUM_ATTRIBUTES
+    ATTRIB_COLOR,
+//    ATTRIB_TEXTUREPOSITON,
+            NUM_ATTRIBUTES
 };
 
 static bool compileShader(GLuint &shader, GLenum type, const std::string &source)
@@ -114,52 +284,56 @@ static bool compileShader(GLuint &shader, GLenum type, const std::string &source
 
 static bool linkProgram(GLuint programPointer)
 {
-    GLint status;
+    GLint status(GL_FALSE);
 
     glLinkProgram(programPointer);
 
-    GLint logLength;
-    glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
-    if (logLength > 0)
-    {
-        GLchar *log = (GLchar *)malloc(logLength);
-        glGetProgramInfoLog(programPointer, logLength, &logLength, log);
-        LOG_ERROR("Program link log:\n%s", log);
-        free(log);
-    }
-
     glGetProgramiv(programPointer, GL_LINK_STATUS, &status);
     if (status == GL_FALSE)
+    {
+        GLint logLength;
+        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
+        if (logLength > 0)
+        {
+            GLchar *log = (GLchar *)malloc(logLength);
+            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
+            LOG_ERROR("Program link log:\n%s", log);
+            free(log);
+        }
+
         return false;
+    }
 
     return true;
 }
 
 static bool validateProgram(GLuint programPointer)
 {
-    GLint logLength, status;
+    GLint status(GL_FALSE);
 
     glValidateProgram(programPointer);
-    glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
-    if (logLength > 0)
-    {
-        GLchar *log = (GLchar *)malloc(logLength);
-        glGetProgramInfoLog(programPointer, logLength, &logLength, log);
-        LOG_ERROR("Program validate log:\n%s", log);
-        free(log);
-    }
 
     glGetProgramiv(programPointer, GL_VALIDATE_STATUS, &status);
     if (status == GL_FALSE)
+    {
+        GLint logLength;
+        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
+        if (logLength > 0)
+        {
+            GLchar *log = (GLchar *)malloc(logLength);
+            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
+            LOG_ERROR("Program validate log:\n%s", log);
+            free(log);
+        }
         return false;
+    }
 
     return true;
-
 }
 
 static bool loadVertexShader(const std::string &vertShaderSource, const std::string &fragShaderSource, GLuint &programPointer)
 {
-    GLuint vertexShader, fragShader;
+    GLuint vertexShader(0), fragShader(0);
 
     programPointer = glCreateProgram();
 
@@ -182,8 +356,11 @@ static bool loadVertexShader(const std::string &vertShaderSource, const std::str
 
     // Bind attribute locations.
     // This needs to be done prior to linking.
-    glBindAttribLocation(programPointer, ATTRIB_VERTEX, "position");
-    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "inputTextureCoordinate");
+    glBindAttribLocation(programPointer, ATTRIB_VERTEX, "a_Position");
+    glErrorCheck();
+    glBindAttribLocation(programPointer, ATTRIB_COLOR, "a_Color");
+    glErrorCheck();
+//    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "inputTextureCoordinate");
 
     // Link program.
     if(!linkProgram(programPointer))
@@ -212,7 +389,7 @@ static bool loadVertexShader(const std::string &vertShaderSource, const std::str
     }
 
     // Get uniform locations.
-    uniforms[UNIFORM_VIDEOFRAME] = glGetUniformLocation(programPointer, "videoFrame");
+//    uniforms[UNIFORM_VIDEOFRAME] = glGetUniformLocation(programPointer, "videoFrame");
 //    uniforms[UNIFORM_INPUTCOLOR] = glGetUniformLocation(programPointer, "inputColor");
 //    uniforms[UNIFORM_THRESHOLD] = glGetUniformLocation(programPointer, "threshold");
 
@@ -297,23 +474,23 @@ static const GLfloat textureVertices[] = {
 };
 static void renderFrameBuffer(GLuint programPointer, GLuint texture)
 {
-    glUseProgram(programPointer);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    // Update uniform values
-    glUniform1i(uniforms[UNIFORM_VIDEOFRAME], 0);
-//    glUniform4f(uniforms[UNIFORM_INPUTCOLOR], thresholdColor[0], thresholdColor[1], thresholdColor[2], 1.0f);
-//    glUniform1f(uniforms[UNIFORM_THRESHOLD], thresholdSensitivity);
-
-    // Update attribute values.
-    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, squareVertices);
-    glEnableVertexAttribArray(ATTRIB_VERTEX);
-    glVertexAttribPointer(ATTRIB_TEXTUREPOSITON, 2, GL_FLOAT, 0, 0, textureVertices);
-    glEnableVertexAttribArray(ATTRIB_TEXTUREPOSITON);
-
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+//    glUseProgram(programPointer);
+//
+//    glActiveTexture(GL_TEXTURE0);
+//    glBindTexture(GL_TEXTURE_2D, texture);
+//
+//    // Update uniform values
+//    glUniform1i(uniforms[UNIFORM_VIDEOFRAME], 0);
+////    glUniform4f(uniforms[UNIFORM_INPUTCOLOR], thresholdColor[0], thresholdColor[1], thresholdColor[2], 1.0f);
+////    glUniform1f(uniforms[UNIFORM_THRESHOLD], thresholdSensitivity);
+//
+//    // Update attribute values.
+//    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, squareVertices);
+//    glEnableVertexAttribArray(ATTRIB_VERTEX);
+//    glVertexAttribPointer(ATTRIB_TEXTUREPOSITON, 2, GL_FLOAT, 0, 0, textureVertices);
+//    glEnableVertexAttribArray(ATTRIB_TEXTUREPOSITON);
+//
+//    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 
@@ -334,7 +511,81 @@ static void renderFrameBuffer(GLuint programPointer, GLuint texture)
 //}
 
 
+static GLfloat _vertices[] = { 1.0, -1.0, 0, 1.0, 0.0, 0.0, 1.0,
+                                          1.0,  1.0, 0, 0.0, 1.0, 0.0, 1.0,
+                                          -1.0,  1.0, 0, 0.0, 0.0, 1.0, 1.0,
+                                          -1.0, -1.0, 0, 0.0, 0.0, 0.0, 1.0};
 
+static GLubyte _indices[] = {0, 1, 2,
+                                        2, 3, 0};
+
+static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBuffer)
+{
+    glGenVertexArraysOES(1, &vao);
+    glErrorCheck();
+    glBindVertexArrayOES(vao);
+    glErrorCheck();
+
+
+    glGenBuffers(GLsizei(1), &vertexBuffer);
+    glErrorCheck();
+    glBindBuffer(GLenum(GL_ARRAY_BUFFER), vertexBuffer);
+    glErrorCheck();
+//    let count = vertices.count
+//    let size =  MemoryLayout<Vertex>.size
+
+    size_t v_count = 4;//_vertices.size() / 7;
+    size_t v_size = sizeof(GLfloat)* 7;
+    const void *vertices = (const void*)_vertices;
+    glBufferData(GLenum(GL_ARRAY_BUFFER), v_count * v_size, vertices, GLenum(GL_STATIC_DRAW));
+    glErrorCheck();
+
+    glGenBuffers(GLsizei(1), &indexBuffer);
+    glErrorCheck();
+    glBindBuffer(GLenum(GL_ELEMENT_ARRAY_BUFFER), indexBuffer);
+    glErrorCheck();
+    size_t i_count = 6;//_indices.size();
+    size_t i_size = sizeof(GLubyte);
+    const void *indices = (const void*)_indices;
+    glBufferData(GLenum(GL_ELEMENT_ARRAY_BUFFER), i_count * i_size, indices, GLenum(GL_STATIC_DRAW));
+    glErrorCheck();
+
+
+    GLsizei s1 = GLsizei(sizeof(GLfloat) * 7);
+    int p1 = 0;
+    glEnableVertexAttribArray(ATTRIB_VERTEX);
+    glErrorCheck();
+    glVertexAttribPointer(
+            ATTRIB_VERTEX,
+            3,
+            GLenum(GL_FLOAT),
+            GLboolean(GL_FALSE),
+            s1,
+            (const GLvoid *)p1);
+    glErrorCheck();
+
+    GLsizei s2 = GLsizei(sizeof(GLfloat) * 7);
+    int p2 = (3 * sizeof(GLfloat));
+//    GL_APICALL void GL_APIENTRY glVertexAttribPointer (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+    glEnableVertexAttribArray(ATTRIB_COLOR);
+    glErrorCheck();
+    glVertexAttribPointer(
+            ATTRIB_COLOR,
+            4,
+            GLenum(GL_FLOAT),
+            GLboolean(GL_FALSE),
+            s2,
+            (const GLvoid *)p2); // x, y, z | r, g, b, a :: offset is 3*sizeof(GLfloat)
+    glErrorCheck();
+
+    // ë°”ì¸ë”©ì„ ëˆë‹¤
+    glBindVertexArrayOES(0);
+    glBindBuffer(GLenum(GL_ARRAY_BUFFER), 0);
+    glBindBuffer(GLenum(GL_ELEMENT_ARRAY_BUFFER), 0);
+
+
+
+}
 
 
 Renderer::Renderer()
@@ -403,8 +654,8 @@ void Renderer::renderLoop()
             case MSG_WINDOW_SET:
                 initialize();
 
-//                glViewport(0, 0, mWidth, mHeight);
-//                loadVertexShader(vertexSource, fragmentSource, mProgram);
+
+
 //                createFramebuffers(mFrameBuffer, mTexture, mWidth, mHeight);
 
                 break;
@@ -421,6 +672,8 @@ void Renderer::renderLoop()
 
         if (_display) {
             drawFrame();
+
+
 
 //            renderFrameBuffer(mProgram, mTexture);
 
@@ -467,6 +720,12 @@ bool Renderer::initialize()
         return false;
     }
 
+//    if (!eglBindAPI(EGL_OPENGL_ES2_BIT)) {
+//        EGLint e = eglGetError();
+//        LOG_ERROR("eglBindAPI() returned error %d", e);
+//        return false;
+//    }
+
     if (!eglChooseConfig(display, attribs, &config, 1, &numConfigs)) {
         LOG_ERROR("eglChooseConfig() returned error %d", eglGetError());
         destroy();
@@ -487,7 +746,22 @@ bool Renderer::initialize()
         return false;
     }
 
-    if (!(context = eglCreateContext(display, config, 0, 0))) {
+
+
+
+
+
+    EGLint ctxattr[] = {
+            EGL_CONTEXT_MAJOR_VERSION, 2,
+            EGL_CONTEXT_MINOR_VERSION, 0,
+            EGL_NONE
+    };
+//
+//    egl_context = eglCreateContext ( egl_display, ecfg, EGL_NO_CONTEXT, ctxattr );
+
+
+
+    if (!(context = eglCreateContext(display, config, 0, ctxattr))) {
         LOG_ERROR("eglCreateContext() returned error %d", eglGetError());
         destroy();
         return false;
@@ -512,7 +786,7 @@ bool Renderer::initialize()
 
 //    glDisable(GL_DITHER);
 //    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
-    glClearColor(1, 0, 0, 1);
+//    glClearColor(1, 0, 0, 1);
 //    glEnable(GL_CULL_FACE);
 //    glShadeModel(GL_SMOOTH);
 //    glEnable(GL_DEPTH_TEST);
@@ -525,9 +799,14 @@ bool Renderer::initialize()
 //    glFrustumf(-ratio, ratio, -1, 1, 1, 10);
 
 
+    if(loadVertexShader(vertexSource, fragmentSource, mProgram))
+    {
+        setupVertexBuffer(mVao, mVertexBuffer, mIndexBuffer);
+        return true;
+    }
 
 
-    return true;
+    return false;
 }
 
 void Renderer::destroy() {
@@ -547,7 +826,19 @@ void Renderer::destroy() {
 
 void Renderer::drawFrame()
 {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glViewport(0, 0, mWidth, mHeight);
+
+    glClearColor(1.0, 1.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(mProgram);
+    glErrorCheck();
+
+    glBindVertexArrayOES(mVao);
+    glErrorCheck();
+    glDrawElements(GLenum(GL_TRIANGLES), GLsizei(6), GLenum(GL_UNSIGNED_BYTE), 0);
+    glErrorCheck();
+    glBindVertexArrayOES(0);
 
 //    glMatrixMode(GL_MODELVIEW);
 //    glLoadIdentity();

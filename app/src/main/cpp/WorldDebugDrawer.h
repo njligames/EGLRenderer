@@ -25,8 +25,8 @@
 #include <thread>
 //#include "SDL.h"
 
-namespace njli
-{
+//namespace njli
+//{
 //  class Camera;
 //    class ShaderProgram;
     
@@ -60,7 +60,7 @@ namespace njli
      inline bool isInitialized()const{return m_Initialized;}
     void init();
     void unInit();
-    void draw(Camera *camera);
+    void draw();//Camera *camera);
 
     /**
      Add a point in 3D space to the debug draw queue.
@@ -372,7 +372,6 @@ namespace njli
 //      ShaderProgram *m_TextShaderProgram;
 
     GLuint mLinePointShaderProgram;
-    GLuint mTextShaderProgram;
 
       GLfloat *m_mat4Buffer;
       GLfloat *m_textMat4Buffer;
@@ -380,8 +379,8 @@ namespace njli
     GLuint linePointVAO;
     GLuint linePointVBO;
 
-    GLuint textVAO;
-    GLuint textVBO;
+//    GLuint textVAO;
+//    GLuint textVBO;
 
 //#if defined(USE_USYNERGY_LIBRARY)
 //    uSynergyContext _synergyCtx;
@@ -390,6 +389,6 @@ namespace njli
 //    bool _synergyActive;
 //#endif
   };
-}
+//}
 
 #endif /* WorldDebugDrawer_hpp */

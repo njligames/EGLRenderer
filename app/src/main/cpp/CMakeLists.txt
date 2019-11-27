@@ -17,7 +17,7 @@ add_library( # Sets the name of the library.
         SHARED
 
         Renderer.cpp
-#        WorldDebugDrawer.cpp
+        WorldDebugDrawer.cpp
 
         # Provides a relative path to your source file(s).
         native-lib.cpp)

@@ -38,7 +38,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-//#include "WorldDebugDrawer.h"
+#include "WorldDebugDrawer.h"
 
 #define LOG_TAG "EglSample"
 
@@ -514,7 +514,7 @@ static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBu
 
 
 Renderer::Renderer()
-        : _msg(MSG_NONE), _display(0), _surface(0), _context(0), _angle(0)
+        : _msg(MSG_NONE), _display(0), _surface(0), _context(0), _angle(0), mDebugDrawer(new WorldDebugDrawer)
 {
     LOG_INFO("Renderer instance created");
     pthread_mutex_init(&_mutex, 0);
@@ -524,6 +524,9 @@ Renderer::Renderer()
 Renderer::~Renderer()
 {
     LOG_INFO("Renderer instance destroyed");
+
+    delete mDebugDrawer;
+
     pthread_mutex_destroy(&_mutex);
     return;
 }
@@ -727,6 +730,9 @@ bool Renderer::initialize()
 
         free(outBuff);
 
+
+        mDebugDrawer->init();
+
         return true;
     }
 
@@ -738,6 +744,8 @@ bool Renderer::initialize()
 
 void Renderer::destroy() {
     LOG_INFO("Destroying context");
+
+    mDebugDrawer->unInit();
 
     eglMakeCurrent(_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroyContext(_display, _context);
@@ -776,6 +784,7 @@ void Renderer::drawFrame()
     glErrorCheck();
     glBindVertexArrayOES(0);
 
+    mDebugDrawer->draw();
 //    glMatrixMode(GL_MODELVIEW);
 //    glLoadIdentity();
 //    glTranslatef(0, 0, -3.0f);

@@ -20,7 +20,9 @@
 #include <pthread.h>
 #include <EGL/egl.h> // requires ndk r5 or newer
 #include <GLES/gl.h>
+#include "WorldDebugDrawer.h"
 
+class WorldDebugDrawer;
 
 class Renderer {
 
@@ -78,6 +80,8 @@ private:
     GLuint mVertexBuffer;
     GLuint mIndexBuffer;
     GLuint mVideoFrameTexture;
+
+    WorldDebugDrawer *mDebugDrawer;
 
 };
 

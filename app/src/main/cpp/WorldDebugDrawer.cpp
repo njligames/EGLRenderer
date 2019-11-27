@@ -18,6 +18,7 @@
 //#include "JsonJLI.h"
 //#include "NJLIInterface.h"
 #include "include/glm/glm.hpp"
+#include "Renderer.h"
 //#include "imgui.h"
 //#include "uSynergy.h"
 #include <string>
@@ -79,53 +80,62 @@
 //    return m;
 //}
 
-namespace njli
-{
+//namespace njli
+//{
 
-    static const std::string textVertShaderSrc = R"(
-    #version 100
-    
-    attribute vec2 in_Position;
-    attribute vec2 in_TexCoords;
-    attribute vec3 in_Color;
-    
-    uniform vec2 u_screenDimensions;
-    
-    varying vec2 v_TexCoords;
-    varying vec4 v_Color;
-    
-    void main()
-    {
-        // Map to normalized clip coordinates:
-        float x = ((2.0 * (in_Position.x - 0.5)) / u_screenDimensions.x) - 1.0;
-        float y = 1.0 - ((2.0 * (in_Position.y - 0.5)) / u_screenDimensions.y);
-    
-        gl_Position = vec4(x, y, 0.0, 1.0);
-        v_TexCoords = in_TexCoords;
-        v_Color     = vec4(in_Color, 1.0);
-    }
-    
-    )";
+static GLfloat modelView[] = {1.0, 0.0, 0.0, 0.0,
+                              0.0, 1.0, 0.0, 0.0,
+                              0.0, 0.0, 1.0, 0.0,
+                              0.0, 0.0, 0.0, 1.0};
+static GLfloat orthographicProjection[] = {1.0, 0.0, 0.0, 0.0,
+                                           0.0, 1.0, 0.0, 0.0,
+                                           0.0, 0.0, 1.0, 0.0,
+                                           0.0, 0.0, 0.0, 1.0};
 
-    static const std::string textFragShaderSrc = R"(
-    #version 100
-    
-#ifdef GL_ES
-    precision mediump float;
-#endif
-    
-    varying vec2 v_TexCoords;
-    varying vec4 v_Color;
-    
-    uniform sampler2D u_glyphTexture;
-    
-    void main()
-    {
-        vec4 out_FragColor = texture2D(u_glyphTexture, v_TexCoords) * v_Color;
-        gl_FragColor = vec4(1.0, 0, 0, 1.0);
-    }
-    
-    )";
+//    static const std::string textVertShaderSrc = R"(
+//    #version 100
+//
+//    attribute vec2 in_Position;
+//    attribute vec2 in_TexCoords;
+//    attribute vec3 in_Color;
+//
+//    uniform vec2 u_screenDimensions;
+//
+//    varying vec2 v_TexCoords;
+//    varying vec4 v_Color;
+//
+//    void main()
+//    {
+//        // Map to normalized clip coordinates:
+//        float x = ((2.0 * (in_Position.x - 0.5)) / u_screenDimensions.x) - 1.0;
+//        float y = 1.0 - ((2.0 * (in_Position.y - 0.5)) / u_screenDimensions.y);
+//
+//        gl_Position = vec4(x, y, 0.0, 1.0);
+//        v_TexCoords = in_TexCoords;
+//        v_Color     = vec4(in_Color, 1.0);
+//    }
+//
+//    )";
+//
+//    static const std::string textFragShaderSrc = R"(
+//    #version 100
+//
+//#ifdef GL_ES
+//    precision mediump float;
+//#endif
+//
+//    varying vec2 v_TexCoords;
+//    varying vec4 v_Color;
+//
+//    uniform sampler2D u_glyphTexture;
+//
+//    void main()
+//    {
+//        vec4 out_FragColor = texture2D(u_glyphTexture, v_TexCoords) * v_Color;
+//        gl_FragColor = vec4(1.0, 0, 0, 1.0);
+//    }
+//
+//    )";
 
     static const std::string linePointVertShaderSource = R"(
     
@@ -165,10 +175,14 @@ namespace njli
     WorldDebugDrawer::WorldDebugDrawer()
         :
 //        m_DebugMode(btIDebugDraw::DBG_MAX_DEBUG_DRAW_MODE),
-          m_Initialized(false), m_LinePointShaderProgram(NULL),
-          m_TextShaderProgram(NULL), m_mat4Buffer(new float[16]),
-          m_textMat4Buffer(new float[16]), linePointVAO(0), linePointVBO(0),
-          textVAO(0), textVBO(0)
+          m_Initialized(false),
+//          m_LinePointShaderProgram(NULL),
+//          m_TextShaderProgram(NULL),
+            mLinePointShaderProgram(0),
+          m_mat4Buffer(new float[16]),
+          m_textMat4Buffer(new float[16]), linePointVAO(0), linePointVBO(0)//,
+//          textVAO(0),
+//          textVBO(0)
     {
     }
 
@@ -181,9 +195,9 @@ namespace njli
 
         glDeleteBuffers(1, &linePointVBO);
 
-        glDeleteVertexArraysOES(1, &textVAO);
-
-        glDeleteBuffers(1, &textVBO);
+//        glDeleteVertexArraysOES(1, &textVAO);
+//
+//        glDeleteBuffers(1, &textVBO);
     }
 
 //    const char *WorldDebugDrawer::getClassName() const
@@ -213,9 +227,17 @@ namespace njli
 
         glBindVertexArrayOES(linePointVAO);
 
-        m_LinePointShaderProgram->use();
+//        m_LinePointShaderProgram->use();
+        glUseProgram(mLinePointShaderProgram);
 
-        m_Camera->render(m_LinePointShaderProgram, true);
+
+
+//        m_Camera->render(m_LinePointShaderProgram, true);
+        GLint modelViewLocation = glGetUniformLocation(mLinePointShaderProgram, "modelView");
+        glUniformMatrix4fv(modelViewLocation, 1, GL_FALSE, modelView);
+
+        GLint projectionLocation = glGetUniformLocation(mLinePointShaderProgram, "projection");
+        glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, orthographicProjection);
 
         GLboolean _depthEnabled = glIsEnabled(GL_DEPTH_TEST);
 
@@ -261,9 +283,16 @@ namespace njli
 
         glBindVertexArrayOES(linePointVAO);
 
-        m_LinePointShaderProgram->use();
+//        m_LinePointShaderProgram->use();
+        glUseProgram(mLinePointShaderProgram);
 
-        m_Camera->render(m_LinePointShaderProgram, true);
+//        m_Camera->render(m_LinePointShaderProgram, true);
+
+        GLint modelViewLocation = glGetUniformLocation(mLinePointShaderProgram, "modelView");
+        glUniformMatrix4fv(modelViewLocation, 1, GL_FALSE, modelView);
+
+        GLint projectionLocation = glGetUniformLocation(mLinePointShaderProgram, "projection");
+        glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, orthographicProjection);
 
         GLboolean _depthEnabled = glIsEnabled(GL_DEPTH_TEST);
 
@@ -454,12 +483,14 @@ namespace njli
 
             //        glEnable(GL_PROGRAM_POINT_SIZE);
 
-            m_LinePointShaderProgram = njli::ShaderProgram::create();
-            m_TextShaderProgram = njli::ShaderProgram::create();
+//            m_LinePointShaderProgram = njli::ShaderProgram::create();
+//            m_TextShaderProgram = njli::ShaderProgram::create();
+//
+//            m_LinePointShaderProgram->load(linePointVertShaderSource,
+//                                           linePointFragShaderSource);
+//            m_TextShaderProgram->load(textVertShaderSrc, textFragShaderSrc);
 
-            m_LinePointShaderProgram->load(linePointVertShaderSource,
-                                           linePointFragShaderSource);
-            m_TextShaderProgram->load(textVertShaderSrc, textFragShaderSrc);
+            Shader::load(linePointVertShaderSource, linePointFragShaderSource, mLinePointShaderProgram);
 
             setupVertexBuffers();
 
@@ -473,8 +504,14 @@ namespace njli
         {
             m_Initialized = false;
 
-            njli::ShaderProgram::destroy(m_TextShaderProgram);
-            njli::ShaderProgram::destroy(m_LinePointShaderProgram);
+            if(0 == mLinePointShaderProgram)
+            {
+                glDeleteProgram(mLinePointShaderProgram);
+                mLinePointShaderProgram = 0;
+            }
+
+//            njli::ShaderProgram::destroy(m_TextShaderProgram);
+//            njli::ShaderProgram::destroy(m_LinePointShaderProgram);
 
 //            unInitImgui();
 
@@ -482,19 +519,19 @@ namespace njli
         }
     }
 
-    void WorldDebugDrawer::draw(Camera *camera)
+    void WorldDebugDrawer::draw()//Camera *camera)
     {
-        m_Camera = camera;
-
-        if (m_Camera && m_Camera->hasParent())
-        {
-            (m_Camera->getProjection() * m_Camera->getModelView())
-                .getOpenGLMatrix(m_textMat4Buffer);
-        }
+//        m_Camera = camera;
+//
+//        if (m_Camera && m_Camera->hasParent())
+//        {
+//            (m_Camera->getProjection() * m_Camera->getModelView())
+//                .getOpenGLMatrix(m_textMat4Buffer);
+//        }
 
         if (dd::hasPendingDraws())
         {
-            dd::flush(njli::World::getInstance()->getWorldClock()->timeStep());
+            dd::flush(0);
         }
     }
 
@@ -745,11 +782,13 @@ namespace njli
                          nullptr, GL_STREAM_DRAW);
 
             // Set the vertex format expected by 3D points and lines:
-            int inPositionAttrib =
-                m_LinePointShaderProgram->getAttributeLocation("in_Position");
-            int inColorPointSize =
-                m_LinePointShaderProgram->getAttributeLocation(
-                    "in_ColorPointSize");
+//            int inPositionAttrib =
+//                m_LinePointShaderProgram->getAttributeLocation("in_Position");
+//            int inColorPointSize =
+//                m_LinePointShaderProgram->getAttributeLocation(
+//                    "in_ColorPointSize");
+            GLint inPositionAttrib = glGetAttribLocation(mLinePointShaderProgram, "in_Position");
+            GLint inColorPointSize = glGetAttribLocation(mLinePointShaderProgram, "in_ColorPointSize");
 
             glEnableVertexAttribArray(inPositionAttrib); // in_Position (vec3)
             glVertexAttribPointer(
@@ -779,60 +818,60 @@ namespace njli
         //
         // Text rendering vertex buffer:
         //
-        glGenVertexArraysOES(1, &textVAO);
-        glBindVertexArrayOES(textVAO);
-        {
-            glGenBuffers(1, &textVBO);
-            glBindBuffer(GL_ARRAY_BUFFER, textVBO);
-
-            // NOTE: A more optimized implementation might consider combining
-            // both the lines/points and text buffers to save some memory!
-            glBufferData(GL_ARRAY_BUFFER,
-                         DEBUG_DRAW_VERTEX_BUFFER_SIZE * sizeof(dd::DrawVertex),
-                         nullptr, GL_STREAM_DRAW);
-
-            // Set the vertex format expected by the 2D text:
-            std::size_t offset = 0;
-
-            int in_Position =
-                m_TextShaderProgram->getAttributeLocation("in_Position");
-            int in_TexCoords =
-                m_TextShaderProgram->getAttributeLocation("in_TexCoords");
-            int in_Color =
-                m_TextShaderProgram->getAttributeLocation("in_Color");
-
-            glEnableVertexAttribArray(in_Position); // in_Position (vec2)
-            glVertexAttribPointer(
-                /* index     = */ in_Position,
-                /* size      = */ 2,
-                /* type      = */ GL_FLOAT,
-                /* normalize = */ GL_FALSE,
-                /* stride    = */ sizeof(dd::DrawVertex),
-                /* offset    = */ (const GLvoid *)offset);
-            offset += sizeof(float) * 2;
-
-            glEnableVertexAttribArray(in_TexCoords); // in_TexCoords (vec2)
-            glVertexAttribPointer(
-                /* index     = */ in_TexCoords,
-                /* size      = */ 2,
-                /* type      = */ GL_FLOAT,
-                /* normalize = */ GL_FALSE,
-                /* stride    = */ sizeof(dd::DrawVertex),
-                /* offset    = */ (const GLvoid *)offset);
-            offset += sizeof(float) * 2;
-
-            glEnableVertexAttribArray(in_Color); // in_Color (vec4)
-            glVertexAttribPointer(
-                /* index     = */ in_Color,
-                /* size      = */ 3,
-                /* type      = */ GL_FLOAT,
-                /* normalize = */ GL_FALSE,
-                /* stride    = */ sizeof(dd::DrawVertex),
-                /* offset    = */ (const GLvoid *)offset);
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-        }
-        glBindVertexArrayOES(0);
+//        glGenVertexArraysOES(1, &textVAO);
+//        glBindVertexArrayOES(textVAO);
+//        {
+//            glGenBuffers(1, &textVBO);
+//            glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+//
+//            // NOTE: A more optimized implementation might consider combining
+//            // both the lines/points and text buffers to save some memory!
+//            glBufferData(GL_ARRAY_BUFFER,
+//                         DEBUG_DRAW_VERTEX_BUFFER_SIZE * sizeof(dd::DrawVertex),
+//                         nullptr, GL_STREAM_DRAW);
+//
+//            // Set the vertex format expected by the 2D text:
+//            std::size_t offset = 0;
+//
+//            int in_Position =
+//                m_TextShaderProgram->getAttributeLocation("in_Position");
+//            int in_TexCoords =
+//                m_TextShaderProgram->getAttributeLocation("in_TexCoords");
+//            int in_Color =
+//                m_TextShaderProgram->getAttributeLocation("in_Color");
+//
+//            glEnableVertexAttribArray(in_Position); // in_Position (vec2)
+//            glVertexAttribPointer(
+//                /* index     = */ in_Position,
+//                /* size      = */ 2,
+//                /* type      = */ GL_FLOAT,
+//                /* normalize = */ GL_FALSE,
+//                /* stride    = */ sizeof(dd::DrawVertex),
+//                /* offset    = */ (const GLvoid *)offset);
+//            offset += sizeof(float) * 2;
+//
+//            glEnableVertexAttribArray(in_TexCoords); // in_TexCoords (vec2)
+//            glVertexAttribPointer(
+//                /* index     = */ in_TexCoords,
+//                /* size      = */ 2,
+//                /* type      = */ GL_FLOAT,
+//                /* normalize = */ GL_FALSE,
+//                /* stride    = */ sizeof(dd::DrawVertex),
+//                /* offset    = */ (const GLvoid *)offset);
+//            offset += sizeof(float) * 2;
+//
+//            glEnableVertexAttribArray(in_Color); // in_Color (vec4)
+//            glVertexAttribPointer(
+//                /* index     = */ in_Color,
+//                /* size      = */ 3,
+//                /* type      = */ GL_FLOAT,
+//                /* normalize = */ GL_FALSE,
+//                /* stride    = */ sizeof(dd::DrawVertex),
+//                /* offset    = */ (const GLvoid *)offset);
+//
+//            glBindBuffer(GL_ARRAY_BUFFER, 0);
+//        }
+//        glBindVertexArrayOES(0);
     }
 
     // From Carbon HIToolbox/Events.h
@@ -1712,4 +1751,4 @@ namespace njli
 //
 //        return true;
 //    }
-} // namespace njli
+//} // namespace njli

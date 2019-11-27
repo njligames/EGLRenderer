@@ -35,7 +35,14 @@
 #include "Renderer.h"
 #include "glm/glm.hpp"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+//#include "WorldDebugDrawer.h"
+
 #define LOG_TAG "EglSample"
+
+extern FILE *android_fopen(const char *fname, const char *mode);
 
 static void glErrorCheck()
 {
@@ -99,119 +106,15 @@ static void glErrorCheck()
   while (0);
 }
 
-
-//#if LOGGING_ON
-#define DEBUG_GL_ERROR_PRINT(op, fmt, ...)                                     \
-  do                                                                           \
-    {                                                                          \
-      for (int error = glGetError(); error; error = glGetError())              \
-        {                                                                      \
-          LOG_ERROR( "after %s(" fmt ")", #op,        \
-                       __VA_ARGS__);                                           \
-          switch (error)                                                       \
-            {                                                                  \
-            case GL_NO_ERROR:                                                  \
-              LOG_INFO(                            \
-                             "GL_NO_ERROR - No error has been recorded. The "  \
-                             "value of this symbolic constant is guaranteed "  \
-                             "to be 0.");                                      \
-              break;                                                           \
-            case GL_INVALID_ENUM:                                              \
-              LOG_ERROR(                              \
-                           "GL_INVALID_ENUM - An unacceptable value is "       \
-                           "specified for an enumerated argument. The "        \
-                           "offending command is ignored and has no other "    \
-                           "side effect than to set the error flag.");         \
-              break;                                                           \
-            case GL_INVALID_VALUE:                                             \
-              LOG_ERROR(                              \
-                           "GL_INVALID_VALUE - A numeric argument is out of "  \
-                           "range. The offending command is ignored and has "  \
-                           "no other side effect than to set the error "       \
-                           "flag.");                                           \
-              break;                                                           \
-            case GL_INVALID_OPERATION:                                         \
-              LOG_ERROR(                              \
-                           "GL_INVALID_OPERATION - The specified operation "   \
-                           "is not allowed in the current state. The "         \
-                           "offending command is ignored and has no other "    \
-                           "side effect than to set the error flag.");         \
-              break;                                                           \
-            case GL_INVALID_FRAMEBUFFER_OPERATION:                             \
-              LOG_ERROR(                              \
-                           "GL_INVALID_FRAMEBUFFER_OPERATION - The command "   \
-                           "is trying to render to or read from the "          \
-                           "framebuffer while the currently bound "            \
-                           "framebuffer is not framebuffer complete (i.e. "    \
-                           "the return value from glCheckFramebufferStatus "   \
-                           "is not GL_FRAMEBUFFER_COMPLETE). The offending "   \
-                           "command is ignored and has no other side effect "  \
-                           "than to set the error flag.");                     \
-              break;                                                           \
-            case GL_OUT_OF_MEMORY:                                             \
-              LOG_ERROR(                              \
-                           "GL_OUT_OF_MEMORY - There is not enough memory "    \
-                           "left to execute the command. The state of the GL " \
-                           "is undefined, except for the state of the error "  \
-                           "flags, after this error is recorded.");            \
-              break;                                                           \
-            default:                                                           \
-              LOG_ERROR( "Unknown (%x)", error);      \
-            }                                                                  \
-        }                                                                      \
-    }                                                                          \
-  while (0)
-//#else
-//#define DEBUG_GL_ERROR_PRINT(op, fmt, ...)                                     \
-//  {                                                                            \
-//  }
-//#endif
-
-#if !(defined(NDEBUG))
-#define DEBUG_GL_ERROR_WRITE(op) DEBUG_GL_ERROR_PRINT(op, "%s", "")
-#else
-#define DEBUG_GL_ERROR_WRITE(op)                                               \
-  {                                                                            \
-  }
-#endif
-
-
-
-//const std::string fragmentSource = R"(
-//
-//varying highp vec2 textureCoordinate;
-//
-//uniform sampler2D videoFrame;
-//
-//void main()
-//{
-//	gl_FragColor = texture2D(videoFrame, textureCoordinate);
-//}
-//
-//)";
-//
-//const std::string vertexSource = R"(
-//
-//attribute vec4 position;
-//attribute vec4 inputTextureCoordinate;
-//
-//varying vec2 textureCoordinate;
-//
-//void main()
-//{
-//	gl_Position = position;
-//	textureCoordinate = inputTextureCoordinate.xy;
-//}
-//
-//)";
-
-
 const std::string fragmentSource = R"(
 
+uniform sampler2D videoFrame;
+
+varying highp vec2 textureCoordinate;
 varying lowp vec4 frag_Color;
 
 void main(void) {
-    gl_FragColor = frag_Color;
+    gl_FragColor = texture2D(videoFrame, textureCoordinate) * frag_Color;
 }
 
 )";
@@ -220,12 +123,15 @@ const std::string vertexSource = R"(
 
 attribute vec4 a_Position;
 attribute vec4 a_Color;
+attribute vec4 a_Texture;
 
+varying vec2 textureCoordinate;
 varying lowp vec4 frag_Color;
 
 void main(void) {
     frag_Color = a_Color;
     gl_Position = a_Position;
+    textureCoordinate = a_Texture.xy;
 }
 
 
@@ -243,168 +149,172 @@ GLint uniforms[NUM_UNIFORMS];
 enum {
     ATTRIB_VERTEX,
     ATTRIB_COLOR,
-//    ATTRIB_TEXTUREPOSITON,
-            NUM_ATTRIBUTES
+    ATTRIB_TEXTUREPOSITON,
+    NUM_ATTRIBUTES
 };
 
-static bool compileShader(GLuint &shader, GLenum type, const std::string &source)
-{
-    GLint status;
-    const GLchar *_source = (GLchar*)source.c_str();
-
-    if (!_source)
-    {
-        LOG_ERROR("Failed to load vertex shader");
-        return false;
-    }
-
-    shader = glCreateShader(type);
-    glShaderSource(shader, 1, &_source, NULL);
-    glCompileShader(shader);
-
-    GLint logLength;
-    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
-    if (logLength > 0)
-    {
-        GLchar *log = (GLchar *)malloc(logLength);
-        glGetShaderInfoLog(shader, logLength, &logLength, log);
-        LOG_ERROR("Shader compile log:\n%s", log);
-        free(log);
-    }
-
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-    if (status == 0)
-    {
-        glDeleteShader(shader);
-        return false;
-    }
-
-    return true;
-}
-
-static bool linkProgram(GLuint programPointer)
-{
-    GLint status(GL_FALSE);
-
-    glLinkProgram(programPointer);
-
-    glGetProgramiv(programPointer, GL_LINK_STATUS, &status);
-    if (status == GL_FALSE)
-    {
-        GLint logLength;
-        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
-        if (logLength > 0)
-        {
-            GLchar *log = (GLchar *)malloc(logLength);
-            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
-            LOG_ERROR("Program link log:\n%s", log);
-            free(log);
-        }
-
-        return false;
-    }
-
-    return true;
-}
-
-static bool validateProgram(GLuint programPointer)
-{
-    GLint status(GL_FALSE);
-
-    glValidateProgram(programPointer);
-
-    glGetProgramiv(programPointer, GL_VALIDATE_STATUS, &status);
-    if (status == GL_FALSE)
-    {
-        GLint logLength;
-        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
-        if (logLength > 0)
-        {
-            GLchar *log = (GLchar *)malloc(logLength);
-            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
-            LOG_ERROR("Program validate log:\n%s", log);
-            free(log);
-        }
-        return false;
-    }
-
-    return true;
-}
-
-static bool loadVertexShader(const std::string &vertShaderSource, const std::string &fragShaderSource, GLuint &programPointer)
-{
-    GLuint vertexShader(0), fragShader(0);
-
-    programPointer = glCreateProgram();
-
-    if(!compileShader(vertexShader, GL_VERTEX_SHADER, vertShaderSource))
-    {
-        return false;
-    }
-
-    if(!compileShader(fragShader, GL_FRAGMENT_SHADER, fragShaderSource))
-    {
-        return false;
-    }
-
-
-    // Attach vertex shader to program.
-    glAttachShader(programPointer, vertexShader);
-
-    // Attach fragment shader to program.
-    glAttachShader(programPointer, fragShader);
-
-    // Bind attribute locations.
-    // This needs to be done prior to linking.
-    glBindAttribLocation(programPointer, ATTRIB_VERTEX, "a_Position");
-    glErrorCheck();
-    glBindAttribLocation(programPointer, ATTRIB_COLOR, "a_Color");
-    glErrorCheck();
-//    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "inputTextureCoordinate");
-
-    // Link program.
-    if(!linkProgram(programPointer))
-    {
-        LOG_ERROR("Failed to link program: %d", programPointer);
-
-        if (vertexShader) {
-            glDeleteShader(vertexShader);
-            vertexShader = 0;
-        }
-        if (fragShader) {
-            glDeleteShader(fragShader);
-            fragShader = 0;
-        }
-        if (programPointer) {
-            glDeleteProgram(programPointer);
-            programPointer = 0;
-        }
-
-        return false;
-    }
-
-    if(!validateProgram(programPointer))
-    {
-        return false;
-    }
-
-    // Get uniform locations.
-//    uniforms[UNIFORM_VIDEOFRAME] = glGetUniformLocation(programPointer, "videoFrame");
-//    uniforms[UNIFORM_INPUTCOLOR] = glGetUniformLocation(programPointer, "inputColor");
-//    uniforms[UNIFORM_THRESHOLD] = glGetUniformLocation(programPointer, "threshold");
-
-    // Release vertex and fragment shaders.
-    if (vertexShader)
-    {
-        glDeleteShader(vertexShader);
-    }
-    if (fragShader)
-    {
-        glDeleteShader(fragShader);
-    }
-
-    return true;
-}
+//static bool compileShader(GLuint &shader, GLenum type, const std::string &source)
+//{
+//    GLint status;
+//    const GLchar *_source = (GLchar*)source.c_str();
+//
+//    if (!_source)
+//    {
+//        LOG_ERROR("Failed to load vertex shader");
+//        return false;
+//    }
+//
+//    shader = glCreateShader(type);
+//    glShaderSource(shader, 1, &_source, NULL);
+//    glCompileShader(shader);
+//
+//    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+//    if (status == GL_FALSE)
+//    {
+//        glDeleteShader(shader);
+//
+//        GLint logLength;
+//        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+//        if (logLength > 0)
+//        {
+//            GLchar *log = (GLchar *)malloc(logLength);
+//            glGetShaderInfoLog(shader, logLength, &logLength, log);
+//            LOG_ERROR("Shader compile log:\n%s", log);
+//            free(log);
+//        }
+//
+//        return false;
+//    }
+//
+//    return true;
+//}
+//
+//static bool linkProgram(GLuint programPointer)
+//{
+//    GLint status(GL_FALSE);
+//
+//    glLinkProgram(programPointer);
+//
+//    glGetProgramiv(programPointer, GL_LINK_STATUS, &status);
+//    if (status == GL_FALSE)
+//    {
+//        GLint logLength;
+//        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
+//        if (logLength > 0)
+//        {
+//            GLchar *log = (GLchar *)malloc(logLength);
+//            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
+//            LOG_ERROR("Program link log:\n%s", log);
+//            free(log);
+//        }
+//
+//        return false;
+//    }
+//
+//    return true;
+//}
+//
+//static bool validateProgram(GLuint programPointer)
+//{
+//    GLint status(GL_FALSE);
+//
+//    glValidateProgram(programPointer);
+//
+//    glGetProgramiv(programPointer, GL_VALIDATE_STATUS, &status);
+//    if (status == GL_FALSE)
+//    {
+//        GLint logLength;
+//        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
+//        if (logLength > 0)
+//        {
+//            GLchar *log = (GLchar *)malloc(logLength);
+//            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
+//            LOG_ERROR("Program validate log:\n%s", log);
+//            free(log);
+//        }
+//        return false;
+//    }
+//
+//    return true;
+//}
+//
+//static bool loadVertexShader(const std::string &vertShaderSource, const std::string &fragShaderSource, GLuint &programPointer)
+//{
+//    GLuint vertexShader(0), fragShader(0);
+//
+//    programPointer = glCreateProgram();
+//
+//    if(!compileShader(vertexShader, GL_VERTEX_SHADER, vertShaderSource))
+//    {
+//        return false;
+//    }
+//
+//    if(!compileShader(fragShader, GL_FRAGMENT_SHADER, fragShaderSource))
+//    {
+//        return false;
+//    }
+//
+//
+//    // Attach vertex shader to program.
+//    glAttachShader(programPointer, vertexShader);
+//
+//    // Attach fragment shader to program.
+//    glAttachShader(programPointer, fragShader);
+//
+//    // Bind attribute locations.
+//    // This needs to be done prior to linking.
+//    glBindAttribLocation(programPointer, ATTRIB_VERTEX, "a_Position");
+//    glErrorCheck();
+//    glBindAttribLocation(programPointer, ATTRIB_COLOR, "a_Color");
+//    glErrorCheck();
+//    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "a_Texture");
+//    glErrorCheck();
+////    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "inputTextureCoordinate");
+//
+//    // Link program.
+//    if(!linkProgram(programPointer))
+//    {
+//        LOG_ERROR("Failed to link program: %d", programPointer);
+//
+//        if (vertexShader) {
+//            glDeleteShader(vertexShader);
+//            vertexShader = 0;
+//        }
+//        if (fragShader) {
+//            glDeleteShader(fragShader);
+//            fragShader = 0;
+//        }
+//        if (programPointer) {
+//            glDeleteProgram(programPointer);
+//            programPointer = 0;
+//        }
+//
+//        return false;
+//    }
+//
+//    if(!validateProgram(programPointer))
+//    {
+//        return false;
+//    }
+//
+//    // Get uniform locations.
+//    GLint videoFrame = glGetUniformLocation(programPointer, "videoFrame");
+//    uniforms[UNIFORM_VIDEOFRAME] = videoFrame;
+////    uniforms[UNIFORM_INPUTCOLOR] = glGetUniformLocation(programPointer, "inputColor");
+////    uniforms[UNIFORM_THRESHOLD] = glGetUniformLocation(programPointer, "threshold");
+//
+//    // Release vertex and fragment shaders.
+//    if (vertexShader)
+//    {
+//        glDeleteShader(vertexShader);
+//    }
+//    if (fragShader)
+//    {
+//        glDeleteShader(fragShader);
+//    }
+//
+//    return true;
+//}
 
 
 
@@ -511,13 +421,20 @@ static void renderFrameBuffer(GLuint programPointer, GLuint texture)
 //}
 
 
-static GLfloat _vertices[] = { 1.0, -1.0, 0, 1.0, 0.0, 0.0, 1.0,
-                                          1.0,  1.0, 0, 0.0, 1.0, 0.0, 1.0,
-                                          -1.0,  1.0, 0, 0.0, 0.0, 1.0, 1.0,
-                                          -1.0, -1.0, 0, 0.0, 0.0, 0.0, 1.0};
+static GLfloat _vertices[] = {  1.0, -1.0, 0.0,    1.0, 1.0, 1.0, 1.0,    1.0, 1.0, //right-top
+                                1.0,  1.0, 0.0,    1.0, 1.0, 1.0, 1.0,    1.0, 0.0, //right-bottom
+                               -1.0,  1.0, 0.0,    1.0, 1.0, 1.0, 1.0,    0.0, 0.0, //left-bottom
+                               -1.0, -1.0, 0.0,    1.0, 1.0, 1.0, 1.0,    0.0, 1.0, //left-top
+};
+
+//static GLfloat _vertices[] = {  0.5, -0.5, 0.0,    1.0, 1.0, 1.0, 1.0,    1.0, 1.0, //right-top
+//                                0.5,  0.5, 0.0,    1.0, 1.0, 1.0, 1.0,    1.0, 0.0, //right-bottom
+//                                -0.5,  0.5, 0.0,    1.0, 1.0, 1.0, 1.0,    0.0, 0.0, //left-bottom
+//                                -0.5, -0.5, 0.0,    1.0, 1.0, 1.0, 1.0,    0.0, 1.0, //left-top
+//};
 
 static GLubyte _indices[] = {0, 1, 2,
-                                        2, 3, 0};
+                             2, 3, 0};
 
 static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBuffer)
 {
@@ -526,16 +443,13 @@ static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBu
     glBindVertexArrayOES(vao);
     glErrorCheck();
 
-
     glGenBuffers(GLsizei(1), &vertexBuffer);
     glErrorCheck();
     glBindBuffer(GLenum(GL_ARRAY_BUFFER), vertexBuffer);
     glErrorCheck();
-//    let count = vertices.count
-//    let size =  MemoryLayout<Vertex>.size
 
     size_t v_count = 4;//_vertices.size() / 7;
-    size_t v_size = sizeof(GLfloat)* 7;
+    size_t v_size = sizeof(GLfloat)* 9;
     const void *vertices = (const void*)_vertices;
     glBufferData(GLenum(GL_ARRAY_BUFFER), v_count * v_size, vertices, GLenum(GL_STATIC_DRAW));
     glErrorCheck();
@@ -550,8 +464,7 @@ static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBu
     glBufferData(GLenum(GL_ELEMENT_ARRAY_BUFFER), i_count * i_size, indices, GLenum(GL_STATIC_DRAW));
     glErrorCheck();
 
-
-    GLsizei s1 = GLsizei(sizeof(GLfloat) * 7);
+    GLsizei s1 = GLsizei(sizeof(GLfloat) * 9);
     int p1 = 0;
     glEnableVertexAttribArray(ATTRIB_VERTEX);
     glErrorCheck();
@@ -564,9 +477,8 @@ static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBu
             (const GLvoid *)p1);
     glErrorCheck();
 
-    GLsizei s2 = GLsizei(sizeof(GLfloat) * 7);
+    GLsizei s2 = GLsizei(sizeof(GLfloat) * 9);
     int p2 = (3 * sizeof(GLfloat));
-//    GL_APICALL void GL_APIENTRY glVertexAttribPointer (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
     glEnableVertexAttribArray(ATTRIB_COLOR);
     glErrorCheck();
     glVertexAttribPointer(
@@ -575,10 +487,23 @@ static void setupVertexBuffer(GLuint &vao, GLuint &vertexBuffer, GLuint &indexBu
             GLenum(GL_FLOAT),
             GLboolean(GL_FALSE),
             s2,
-            (const GLvoid *)p2); // x, y, z | r, g, b, a :: offset is 3*sizeof(GLfloat)
+            (const GLvoid *)p2);
     glErrorCheck();
 
-    // ë°”ì¸ë”©ì„ ëˆë‹¤
+
+    GLsizei s3 = GLsizei(sizeof(GLfloat) * 9);
+    int p3 = ((3 + 4) * sizeof(GLfloat));
+    glEnableVertexAttribArray(ATTRIB_TEXTUREPOSITON);
+    glErrorCheck();
+    glVertexAttribPointer(
+            ATTRIB_TEXTUREPOSITON,
+            2,
+            GLenum(GL_FLOAT),
+            GLboolean(GL_FALSE),
+            s3,
+            (const GLvoid *)p3);
+    glErrorCheck();
+
     glBindVertexArrayOES(0);
     glBindBuffer(GLenum(GL_ARRAY_BUFFER), 0);
     glBindBuffer(GLenum(GL_ELEMENT_ARRAY_BUFFER), 0);
@@ -654,10 +579,6 @@ void Renderer::renderLoop()
             case MSG_WINDOW_SET:
                 initialize();
 
-
-
-//                createFramebuffers(mFrameBuffer, mTexture, mWidth, mHeight);
-
                 break;
 
             case MSG_RENDER_LOOP_EXIT:
@@ -671,11 +592,8 @@ void Renderer::renderLoop()
         _msg = MSG_NONE;
 
         if (_display) {
+
             drawFrame();
-
-
-
-//            renderFrameBuffer(mProgram, mTexture);
 
             if (!eglSwapBuffers(_display, _surface)) {
                 LOG_ERROR("eglSwapBuffers() returned error %d", eglGetError());
@@ -705,8 +623,6 @@ bool Renderer::initialize()
     EGLint format;
     EGLSurface surface;
     EGLContext context;
-//    EGLint width;
-//    EGLint height;
     GLfloat ratio;
 
     LOG_INFO("Initializing context");
@@ -719,12 +635,6 @@ bool Renderer::initialize()
         LOG_ERROR("eglInitialize() returned error %d", eglGetError());
         return false;
     }
-
-//    if (!eglBindAPI(EGL_OPENGL_ES2_BIT)) {
-//        EGLint e = eglGetError();
-//        LOG_ERROR("eglBindAPI() returned error %d", e);
-//        return false;
-//    }
 
     if (!eglChooseConfig(display, attribs, &config, 1, &numConfigs)) {
         LOG_ERROR("eglChooseConfig() returned error %d", eglGetError());
@@ -746,20 +656,11 @@ bool Renderer::initialize()
         return false;
     }
 
-
-
-
-
-
     EGLint ctxattr[] = {
             EGL_CONTEXT_MAJOR_VERSION, 2,
             EGL_CONTEXT_MINOR_VERSION, 0,
             EGL_NONE
     };
-//
-//    egl_context = eglCreateContext ( egl_display, ecfg, EGL_NO_CONTEXT, ctxattr );
-
-
 
     if (!(context = eglCreateContext(display, config, 0, ctxattr))) {
         LOG_ERROR("eglCreateContext() returned error %d", eglGetError());
@@ -784,26 +685,52 @@ bool Renderer::initialize()
     _surface = surface;
     _context = context;
 
-//    glDisable(GL_DITHER);
-//    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
-//    glClearColor(1, 0, 0, 1);
-//    glEnable(GL_CULL_FACE);
-//    glShadeModel(GL_SMOOTH);
-//    glEnable(GL_DEPTH_TEST);
-//
-//    glViewport(0, 0, width, height);
-//
-//    ratio = (GLfloat) width / height;
-//    glMatrixMode(GL_PROJECTION);
-//    glLoadIdentity();
-//    glFrustumf(-ratio, ratio, -1, 1, 1, 10);
-
-
-    if(loadVertexShader(vertexSource, fragmentSource, mProgram))
+    if(Shader::load(vertexSource, fragmentSource, mProgram))
     {
+        GLint videoFrame = glGetUniformLocation(mProgram, "videoFrame");
+        uniforms[UNIFORM_VIDEOFRAME] = videoFrame;
+
         setupVertexBuffer(mVao, mVertexBuffer, mIndexBuffer);
+
+        char const *filename = "img0.bmp";
+        int x;
+        int y;
+        int channels_in_file;
+        int desired_channels=4;
+
+
+        FILE *f = android_fopen(filename, "r");
+        void *buffer = (void*)stbi_load_from_file(f, &x, &y, &channels_in_file, desired_channels);
+
+        GLsizei bufferHeight = y;
+        GLsizei bufferWidth = x;
+        size_t currSize = bufferHeight * bufferWidth * channels_in_file;
+        unsigned char *outBuff = (unsigned char*)malloc(currSize);
+//        memset(outBuff, 0, currSize);
+        memcpy(outBuff, buffer, currSize);
+
+        // Create a new texture from the camera frame data, display that using the shaders
+        glGenTextures(1, &mVideoFrameTexture);
+        glErrorCheck();
+        glBindTexture(GL_TEXTURE_2D, mVideoFrameTexture);
+        glErrorCheck();
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // This is necessary for non-power-of-two textures
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+
+        // Using BGRA extension to pull in video frame data directly
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)bufferWidth, (GLsizei)bufferHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, outBuff);
+        glErrorCheck();
+
+        free(outBuff);
+
         return true;
     }
+
+
 
 
     return false;
@@ -828,10 +755,19 @@ void Renderer::drawFrame()
 {
     glViewport(0, 0, mWidth, mHeight);
 
-    glClearColor(1.0, 1.0, 0.0, 1.0);
+    glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(mProgram);
+    glErrorCheck();
+
+    glActiveTexture(GL_TEXTURE0);
+    glErrorCheck();
+    glBindTexture(GL_TEXTURE_2D, mVideoFrameTexture);
+    glErrorCheck();
+
+    // Update uniform values
+    glUniform1i(uniforms[UNIFORM_VIDEOFRAME], 0);
     glErrorCheck();
 
     glBindVertexArrayOES(mVao);
@@ -867,3 +803,167 @@ void* Renderer::threadStartCallback(void *myself)
     return 0;
 }
 
+
+
+bool Shader::compileShader(GLuint &shader, GLenum type, const std::string &source)
+{
+    GLint status;
+    const GLchar *_source = (GLchar*)source.c_str();
+
+    if (!_source)
+    {
+        LOG_ERROR("Failed to load vertex shader");
+        return false;
+    }
+
+    shader = glCreateShader(type);
+    glShaderSource(shader, 1, &_source, NULL);
+    glCompileShader(shader);
+
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        glDeleteShader(shader);
+
+        GLint logLength;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+        if (logLength > 0)
+        {
+            GLchar *log = (GLchar *)malloc(logLength);
+            glGetShaderInfoLog(shader, logLength, &logLength, log);
+            LOG_ERROR("Shader compile log:\n%s", log);
+            free(log);
+        }
+
+        return false;
+    }
+
+    return true;
+}
+bool Shader::linkProgram(GLuint programPointer)
+{
+    GLint status(GL_FALSE);
+
+    glLinkProgram(programPointer);
+
+    glGetProgramiv(programPointer, GL_LINK_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        GLint logLength;
+        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
+        if (logLength > 0)
+        {
+            GLchar *log = (GLchar *)malloc(logLength);
+            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
+            LOG_ERROR("Program link log:\n%s", log);
+            free(log);
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
+bool Shader::validateProgram(GLuint programPointer)
+{
+    GLint status(GL_FALSE);
+
+    glValidateProgram(programPointer);
+
+    glGetProgramiv(programPointer, GL_VALIDATE_STATUS, &status);
+    if (status == GL_FALSE)
+    {
+        GLint logLength;
+        glGetProgramiv(programPointer, GL_INFO_LOG_LENGTH, &logLength);
+        if (logLength > 0)
+        {
+            GLchar *log = (GLchar *)malloc(logLength);
+            glGetProgramInfoLog(programPointer, logLength, &logLength, log);
+            LOG_ERROR("Program validate log:\n%s", log);
+            free(log);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+//bool Shader::load(const std::string &vertShaderSource, const std::string &fragShaderSource, GLuint &programPointer);
+bool Shader::load(const std::string &vertShaderSource, const std::string &fragShaderSource, GLuint &programPointer)
+{
+    GLuint vertexShader(0), fragShader(0);
+
+    programPointer = glCreateProgram();
+
+    if(!compileShader(vertexShader, GL_VERTEX_SHADER, vertShaderSource))
+    {
+        return false;
+    }
+
+    if(!compileShader(fragShader, GL_FRAGMENT_SHADER, fragShaderSource))
+    {
+        return false;
+    }
+
+
+    // Attach vertex shader to program.
+    glAttachShader(programPointer, vertexShader);
+
+    // Attach fragment shader to program.
+    glAttachShader(programPointer, fragShader);
+
+    // Bind attribute locations.
+    // This needs to be done prior to linking.
+    glBindAttribLocation(programPointer, ATTRIB_VERTEX, "a_Position");
+    glErrorCheck();
+    glBindAttribLocation(programPointer, ATTRIB_COLOR, "a_Color");
+    glErrorCheck();
+    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "a_Texture");
+    glErrorCheck();
+//    glBindAttribLocation(programPointer, ATTRIB_TEXTUREPOSITON, "inputTextureCoordinate");
+
+    // Link program.
+    if(!linkProgram(programPointer))
+    {
+        LOG_ERROR("Failed to link program: %d", programPointer);
+
+        if (vertexShader) {
+            glDeleteShader(vertexShader);
+            vertexShader = 0;
+        }
+        if (fragShader) {
+            glDeleteShader(fragShader);
+            fragShader = 0;
+        }
+        if (programPointer) {
+            glDeleteProgram(programPointer);
+            programPointer = 0;
+        }
+
+        return false;
+    }
+
+    if(!validateProgram(programPointer))
+    {
+        return false;
+    }
+
+    // Get uniform locations.
+//    GLint videoFrame = glGetUniformLocation(programPointer, "videoFrame");
+//    uniforms[UNIFORM_VIDEOFRAME] = videoFrame;
+//    uniforms[UNIFORM_INPUTCOLOR] = glGetUniformLocation(programPointer, "inputColor");
+//    uniforms[UNIFORM_THRESHOLD] = glGetUniformLocation(programPointer, "threshold");
+
+    // Release vertex and fragment shaders.
+    if (vertexShader)
+    {
+        glDeleteShader(vertexShader);
+    }
+    if (fragShader)
+    {
+        glDeleteShader(fragShader);
+    }
+
+    return true;
+}

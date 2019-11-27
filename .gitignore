@@ -12,3 +12,5 @@
 /captures
 .externalNativeBuild
 .cxx
+
+*.cpp___jb_old___

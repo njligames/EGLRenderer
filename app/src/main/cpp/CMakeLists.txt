@@ -17,6 +17,7 @@ add_library( # Sets the name of the library.
         SHARED
 
         Renderer.cpp
+#        WorldDebugDrawer.cpp
 
         # Provides a relative path to your source file(s).
         native-lib.cpp)
@@ -50,4 +51,7 @@ target_link_libraries( # Specifies the target library.
         # included in the NDK.
         ${log-lib})
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
+target_include_directories(native-lib PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>  # <prefix>/include/mylib
+        )

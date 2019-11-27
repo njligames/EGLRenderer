@@ -2,6 +2,7 @@ package com.example.eglrenderer;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.content.res.AssetManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Surface;
@@ -93,12 +94,14 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     public native void nativeOnPause();
     public native void nativeOnStop();
     public native void nativeSetSurface(Surface surface);
+    public static native void init_asset_manager(AssetManager assetManager);
 
     public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
         nativeSetSurface(holder.getSurface());
     }
 
     public void surfaceCreated(SurfaceHolder holder) {
+        init_asset_manager(this.getAssets());
     }
 
     public void surfaceDestroyed(SurfaceHolder holder) {

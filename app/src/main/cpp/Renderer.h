@@ -77,7 +77,19 @@ private:
     GLuint mVao;
     GLuint mVertexBuffer;
     GLuint mIndexBuffer;
+    GLuint mVideoFrameTexture;
 
 };
+
+class Shader {
+    static bool compileShader(GLuint &shader, GLenum type, const std::string &source);
+    static bool linkProgram(GLuint programPointer);
+    static bool validateProgram(GLuint programPointer);
+public:
+    static bool load(const std::string &vertShaderSource, const std::string &fragShaderSource, GLuint &programPointer);
+private:
+
+};
+
 
 #endif // RENDERER_H
